@@ -23,6 +23,14 @@ block_cipher = None
 # ── Collect ultralytics (YOLO) package data ────────────────────────────────────
 ultra_datas, ultra_binaries, ultra_hiddenimports = collect_all('ultralytics')
 
+# ── Collect numpy data ─────────────────────────────────────────────────────────
+# numpy's internal .libs / DLLs must be explicitly collected or PyInstaller
+# bundles a broken stub that raises "Numpy is not available" at runtime.
+try:
+    numpy_datas, numpy_binaries, numpy_hiddenimports = collect_all('numpy')
+except Exception:
+    numpy_datas, numpy_binaries, numpy_hiddenimports = [], [], []
+
 # ── Collect torch data ─────────────────────────────────────────────────────────
 try:
     torch_datas, torch_binaries, torch_hiddenimports = collect_all('torch')
@@ -35,9 +43,9 @@ app_datas = [
     ('alert_message.mp3', '.'),   # Alert audio — bundled at root
 ]
 
-all_datas    = app_datas + ultra_datas + torch_datas
-all_binaries = ultra_binaries + torch_binaries
-all_hidden   = ultra_hiddenimports + torch_hiddenimports + [
+all_datas    = app_datas + ultra_datas + torch_datas + numpy_datas
+all_binaries = ultra_binaries + torch_binaries + numpy_binaries
+all_hidden   = ultra_hiddenimports + torch_hiddenimports + numpy_hiddenimports + [
     'cv2',
     'numpy',
     'pygame',
