@@ -1,0 +1,7 @@
+# requirements.txt
+# Install everything with:   pip install -r requirements.txt
+
+opencv-python>=4.8.0     # camera capture and image drawing
+ultralytics>=8.0.0       # YOLOv8 pose estimation (downloads model on first run)
+numpy>=1.24.0            # math / array operations (usually already installed)
+pygame>=2.5.0            # audio beep generation
