@@ -1,0 +1,113 @@
+{
+  "name": "Bed Exit Monitor - Upload to Drive",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "bed-exit-upload",
+        "options": {
+          "binaryData": true,
+          "binaryPropertyName": "video"
+        },
+        "responseMode": "responseNode"
+      },
+      "id": "webhook-receive",
+      "name": "Receive Clip",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0],
+      "webhookId": "bed-exit-upload"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build the filename with a timestamp prefix if not already present\nconst filename = $binary?.video?.fileName || `alert_${Date.now()}.mp4`;\nreturn [{ json: { filename }, binary: $binary }];"
+      },
+      "id": "prep-filename",
+      "name": "Prep Filename",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [220, 0]
+    },
+    {
+      "parameters": {
+        "operation": "upload",
+        "name": "={{ $json.filename }}",
+        "driveId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "MyDrive"
+        },
+        "folderId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "BuckeyeBedMonitor",
+          "cachedResultName": "BuckeyeBedMonitor"
+        },
+        "binaryData": true,
+        "binaryPropertyName": "video",
+        "options": {}
+      },
+      "id": "gdrive-upload",
+      "name": "Upload to Drive",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [440, 0],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "KBEpVcSJKVR8ztYN",
+          "name": "Google Drive OAuth2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ status: 'ok', file: $json.name, id: $json.id }) }}"
+      },
+      "id": "respond",
+      "name": "Respond",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [660, 0]
+    }
+  ],
+  "connections": {
+    "Receive Clip": {
+      "main": [
+        [
+          {
+            "node": "Prep Filename",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prep Filename": {
+      "main": [
+        [
+          {
+            "node": "Upload to Drive",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload to Drive": {
+      "main": [
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}

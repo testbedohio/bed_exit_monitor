@@ -1,5 +1,5 @@
 # main.py
-# ─────────────────────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────────────────────────
 # Entry point for the Bed Exit Monitor.
 # Responsibilities:
 #   - Open the USB camera
@@ -7,40 +7,54 @@
 #   - Handle mouse dragging to reposition the threshold line
 #   - Draw the settings panel and handle toggle clicks
 #   - Manage alert state and cooldown timer
+#   - Feed frames into the rolling video buffer
+#   - Trigger clip save + Google Drive upload on alert
 #
 # Run with:   python main.py
-# ─────────────────────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────────────────────────
+
+import os
+import time
 
 import cv2
 import numpy as np
-import time
 
 import config
+from buffer import RollingBuffer
 from detector import PoseDetector, check_crossing
 from alert import trigger_alert
+from uploader import upload_clip
 
 
-# ── Settings state ────────────────────────────────────────────
+# ── Settings state ─────────────────────────────────────────────────────────────
 settings = {
-    "face_blur":     False,
-    "skeleton_only": False,
+    "face_blur":      False,
+    "skeleton_only":  False,
 }
 
-# ── Threshold line state ──────────────────────────────────────
+# ── Threshold line state ───────────────────────────────────────────────────────
 line_p1 = list(config.LINE_POINT_1)
 line_p2 = list(config.LINE_POINT_2)
 dragging_point = None
 
-# ── Alert state ───────────────────────────────────────────────
-consecutive_alert_frames = 0
-last_alert_time          = 0.0
-alert_active             = False
+# ── Alert state ────────────────────────────────────────────────────────────────
+consecutive_alert_frames  = 0
+last_alert_time           = 0.0
+alert_active              = False
 
-# ── Layout constants ──────────────────────────────────────────
-PANEL_WIDTH   = 220    # width of the right-side settings panel in pixels
-VIDEO_WIDTH   = config.FRAME_WIDTH
-VIDEO_HEIGHT  = config.FRAME_HEIGHT
-TOTAL_WIDTH   = VIDEO_WIDTH + PANEL_WIDTH
+# ── Upload status (shown in HUD) ───────────────────────────────────────────────
+upload_status = ""
+
+def _set_upload_status(msg: str):
+    global upload_status
+    upload_status = msg
+
+
+# ── Layout constants ───────────────────────────────────────────────────────────
+PANEL_WIDTH    = 220    # width of the right-side settings panel in pixels
+VIDEO_WIDTH    = config.FRAME_WIDTH
+VIDEO_HEIGHT   = config.FRAME_HEIGHT
+TOTAL_WIDTH    = VIDEO_WIDTH + PANEL_WIDTH
 
 # Toggle button geometry (within the panel)
 # Each toggle is a rounded rectangle the operator clicks to flip a setting.
@@ -59,12 +73,12 @@ TOGGLES = [
     },
 ]
 
-TOGGLE_X      = VIDEO_WIDTH + 20   # left edge of toggle button
-TOGGLE_W      = PANEL_WIDTH - 40   # toggle button width
-TOGGLE_H      = 44                 # toggle button height
+TOGGLE_X       = VIDEO_WIDTH + 20   # left edge of toggle button
+TOGGLE_W       = PANEL_WIDTH - 40   # toggle button width
+TOGGLE_H       = 44                 # toggle button height
 
 
-# ── Mouse callback ────────────────────────────────────────────
+# ── Mouse callback ─────────────────────────────────────────────────────────────
 
 def mouse_callback(event, x, y, flags, param):
     """
@@ -76,14 +90,14 @@ def mouse_callback(event, x, y, flags, param):
 
     if event == cv2.EVENT_LBUTTONDOWN:
 
-        # ── Check toggle buttons first ────────────────────────
+        # ── Check toggle buttons first ─────────────────────────────────────────
         for toggle in TOGGLES:
             tx, ty = TOGGLE_X, toggle["y"]
             if tx <= x <= tx + TOGGLE_W and ty <= y <= ty + TOGGLE_H:
                 settings[toggle["key"]] = not settings[toggle["key"]]
                 return   # handled — don't also check line dragging
 
-        # ── Check threshold line endpoints ────────────────────
+        # ── Check threshold line endpoints ─────────────────────────────────────
         dist_p1 = np.hypot(x - line_p1[0], y - line_p1[1])
         dist_p2 = np.hypot(x - line_p2[0], y - line_p2[1])
         if dist_p1 < config.DRAG_RADIUS:
@@ -101,7 +115,7 @@ def mouse_callback(event, x, y, flags, param):
         dragging_point = None
 
 
-# ── Drawing helpers ───────────────────────────────────────────
+# ── Drawing helpers ────────────────────────────────────────────────────────────
 
 def draw_settings_panel(canvas: np.ndarray):
     """
@@ -137,9 +151,9 @@ def draw_settings_panel(canvas: np.ndarray):
 
     # Draw each toggle button
     for toggle in TOGGLES:
-        is_on = settings[toggle["key"]]
-        tx    = TOGGLE_X
-        ty    = toggle["y"]
+        is_on  = settings[toggle["key"]]
+        tx     = TOGGLE_X
+        ty     = toggle["y"]
 
         # Button background — green when ON, dark when OFF
         btn_color = (0, 140, 0) if is_on else (60, 60, 60)
@@ -158,7 +172,7 @@ def draw_settings_panel(canvas: np.ndarray):
                     cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 255, 255), 1)
 
         # ON / OFF indicator text
-        status_text  = "ON" if is_on else "OFF"
+        status_text  = "ON"  if is_on else "OFF"
         status_color = (180, 255, 180) if is_on else (160, 160, 160)
         cv2.putText(canvas, status_text,
                     (tx + 10, ty + 36),
@@ -168,6 +182,22 @@ def draw_settings_panel(canvas: np.ndarray):
         cv2.putText(canvas, toggle["desc"],
                     (tx + 2, ty + TOGGLE_H + 18),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.38, (120, 120, 120), 1)
+
+    # Upload status line (near bottom of panel)
+    if upload_status:
+        # Word-wrap naively at 22 chars
+        words  = upload_status
+        y_base = VIDEO_HEIGHT - 60
+        cv2.putText(canvas, "Drive upload:",
+                    (VIDEO_WIDTH + 10, y_base),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.38, (140, 140, 140), 1)
+        cv2.putText(canvas, words[:28],
+                    (VIDEO_WIDTH + 10, y_base + 16),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.38, (180, 220, 180), 1)
+        if len(words) > 28:
+            cv2.putText(canvas, words[28:56],
+                        (VIDEO_WIDTH + 10, y_base + 32),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.38, (180, 220, 180), 1)
 
 
 def draw_threshold_line(frame: np.ndarray, alert: bool):
@@ -218,19 +248,19 @@ def draw_offending_points(frame: np.ndarray, points: list):
         cv2.circle(frame, pt, 14, (255, 255, 255), 2)
 
 
-# ── Main loop ─────────────────────────────────────────────────
+# ── Main loop ──────────────────────────────────────────────────────────────────
 
 def main():
     global consecutive_alert_frames, last_alert_time, alert_active
 
-    print(f"[Main] Opening camera index {config.CAMERA_INDEX}...")
+    print(f"[Main] Opening camera index {config.CAMERA_INDEX}…")
     cap = cv2.VideoCapture(config.CAMERA_INDEX)
     cap.set(cv2.CAP_PROP_FRAME_WIDTH,  VIDEO_WIDTH)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, VIDEO_HEIGHT)
 
     if not cap.isOpened():
         print(f"[Main] ERROR: Could not open camera {config.CAMERA_INDEX}.")
-        print("  Try changing CAMERA_INDEX in config.py (0, 1, 2...)")
+        print("  Try changing CAMERA_INDEX in config.py (0, 1, 2…)")
         return
 
     cv2.namedWindow(config.WINDOW_TITLE, cv2.WINDOW_NORMAL)
@@ -238,7 +268,11 @@ def main():
     cv2.setMouseCallback(config.WINDOW_TITLE, mouse_callback)
 
     detector = PoseDetector()
+    buffer   = RollingBuffer()
 
+    # Ensure the local clips folder exists
+    clips_folder = config.clips_dir()
+    print(f"[Main] Alert clips will be saved to: {clips_folder}")
     print("[Main] Running. Press Q in the window to quit.")
 
     fps_timer   = time.time()
@@ -251,7 +285,11 @@ def main():
             print("[Main] Camera read failed.")
             break
 
-        # ── Apply privacy settings ──────────────────────────
+        # ── Feed the raw frame into the rolling buffer ─────────────────────────
+        # We feed the frame BEFORE overlays so the saved clip is clean video.
+        buffer.add_frame(frame)
+
+        # ── Apply privacy settings ─────────────────────────────────────────────
         if settings["face_blur"]:
             frame = detector.apply_face_blur(frame)
 
@@ -262,7 +300,7 @@ def main():
             # Draw the full annotated skeleton on the real video
             video_frame = detector.draw_skeleton(frame)
 
-        # ── Pose / crossing logic ───────────────────────────
+        # ── Pose / crossing logic ──────────────────────────────────────────────
         # Always run crossing check on the real frame (not the black canvas)
         leg_points = detector.get_leg_keypoints(frame)
 
@@ -277,21 +315,32 @@ def main():
         else:
             consecutive_alert_frames = max(0, consecutive_alert_frames - 1)
 
-        now             = time.time()
-        cooldown_passed = (now - last_alert_time) > config.ALERT_COOLDOWN_SECONDS
-        should_alert    = (consecutive_alert_frames >= config.ALERT_FRAME_THRESHOLD
-                           and cooldown_passed)
+        now              = time.time()
+        cooldown_passed  = (now - last_alert_time) > config.ALERT_COOLDOWN_SECONDS
+        should_alert     = (consecutive_alert_frames >= config.ALERT_FRAME_THRESHOLD
+                            and cooldown_passed)
 
         if should_alert:
-            alert_active             = True
-            last_alert_time          = now
-            consecutive_alert_frames = 0
+            alert_active              = True
+            last_alert_time           = now
+            consecutive_alert_frames  = 0
             trigger_alert()
+
+            # ── Save rolling buffer clip and upload to Google Drive ────────────
+            clip_name = f"alert_{time.strftime('%Y%m%d_%H%M%S')}.mp4"
+            clip_path = os.path.join(clips_folder, clip_name)
+            buffer.save_clip_async(
+                clip_path,
+                callback=lambda p: (
+                    upload_clip(p, on_status=_set_upload_status)
+                    if p else _set_upload_status("Clip save failed")
+                ),
+            )
 
         if alert_active and (now - last_alert_time) > 3.0:
             alert_active = False
 
-        # ── Drawing ──────────────────────────────────────────
+        # ── Drawing ────────────────────────────────────────────────────────────
         if alert_active:
             draw_alert_overlay(video_frame)
 
@@ -307,7 +356,7 @@ def main():
 
         draw_hud(video_frame, fps)
 
-        # ── Compose final canvas (video + settings panel) ────
+        # ── Compose final canvas (video + settings panel) ──────────────────────
         # Create a wide canvas and place the video on the left,
         # then draw the settings panel on the right.
         canvas = np.zeros((VIDEO_HEIGHT, TOTAL_WIDTH, 3), dtype=np.uint8)

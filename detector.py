@@ -1,5 +1,5 @@
 # detector.py
-# ─────────────────────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────────────────────────
 # Handles pose estimation and the "has a leg crossed the line?" logic.
 #
 # HOW YOLO POSE WORKS:
@@ -18,7 +18,7 @@
 #   11 = left hip,     12 = right hip
 #   13 = left knee,    14 = right knee
 #   15 = left ankle,   16 = right ankle
-# ─────────────────────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────────────────────────
 
 import cv2
 import numpy as np
@@ -28,15 +28,15 @@ import config
 
 # COCO skeleton connections — pairs of keypoint indices to draw as bones
 SKELETON_CONNECTIONS = [
-    (0, 1), (0, 2),           # nose to eyes
-    (1, 3), (2, 4),           # eyes to ears
-    (5, 6),                   # shoulders
-    (5, 7), (7, 9),           # left arm
-    (6, 8), (8, 10),          # right arm
-    (5, 11), (6, 12),         # torso sides
-    (11, 12),                 # hips
-    (11, 13), (13, 15),       # left leg
-    (12, 14), (14, 16),       # right leg
+    (0, 1), (0, 2),             # nose to eyes
+    (1, 3), (2, 4),             # eyes to ears
+    (5, 6),                     # shoulders
+    (5, 7), (7, 9),             # left arm
+    (6, 8), (8, 10),            # right arm
+    (5, 11), (6, 12),           # torso sides
+    (11, 12),                   # hips
+    (11, 13), (13, 15),         # left leg
+    (12, 14), (14, 16),         # right leg
 ]
 
 
@@ -46,9 +46,10 @@ class PoseDetector:
         Load the YOLOv8 pose model.
         'yolov8n-pose.pt' is the nano (smallest/fastest) version.
         Downloads automatically on first run (~6 MB).
+        When packaged with PyInstaller the model is bundled via config.MODEL_FILE.
         """
-        print("[Detector] Loading YOLOv8 pose model...")
-        self.model = YOLO("yolov8n-pose.pt")
+        print("[Detector] Loading YOLOv8 pose model…")
+        self.model = YOLO(config.MODEL_FILE)
         print("[Detector] Model ready.")
 
     def _run_model(self, frame: np.ndarray):
@@ -197,9 +198,9 @@ class PoseDetector:
         return frame
 
 
-# ─────────────────────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────────────────────────
 # Line-crossing geometry
-# ─────────────────────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────────────────────────
 
 def _side_of_line(point: tuple, p1: tuple, p2: tuple) -> float:
     """
