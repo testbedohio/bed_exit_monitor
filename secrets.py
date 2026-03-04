@@ -12,16 +12,16 @@
 
 # --- Supabase / PostgreSQL Connection ---
 # Found in: Supabase Dashboard -> Settings -> Database -> Connection parameters
-DB_HOST     = "YOUR_SUPABASE_HOST"       # e.g. db.xxxxxxxxxxxx.supabase.co
-DB_NAME     = "postgres"                 # usually 'postgres'
-DB_PORT     = 5432                       # usually 5432
-DB_USER     = "postgres"                 # usually 'postgres'
-DB_PASSWORD = "YOUR_DATABASE_PASSWORD"  # the password you set when creating the project
+DB_HOST     = "db.qsnsxhpppqrbmlmjanyu.supabase.co"
+DB_NAME     = "postgres"
+DB_PORT     = 5432
+DB_USER     = "postgres"
+DB_PASSWORD = "jonJed--3,C9376shnxosing83ndyj0m0sendi"
 
 # --- Supabase REST API ---
 # Found in: Supabase Dashboard -> Settings -> API
-SUPABASE_URL      = "https://xxxxxxxxxxxx.supabase.co"  # your project URL
-SUPABASE_ANON_KEY = "YOUR_ANON_PUBLIC_KEY"              # the long 'anon' key
+SUPABASE_URL      = "https://qsnsxhpppqrbmlmjanyu.supabase.co"
+SUPABASE_ANON_KEY = "sb_publishable_lUhZGQsb2mM6sV5OihYkeA_O2DqGFcL"
 
 # --- n8n Google Sheet Webhook ---
 # Paste the Production webhook URL here after creating the n8n workflow.
