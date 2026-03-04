@@ -4,6 +4,7 @@
 
 # Credentials - NEVER commit this file
 db_config.py
+secrets.py
 
 # Python virtual environment
 venv/
