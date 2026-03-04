@@ -1,0 +1,33 @@
+# ---------------------------------------------------------------------------
+# .gitignore for bed_exit_monitor
+# ---------------------------------------------------------------------------
+
+# Credentials - NEVER commit this file
+secrets.py
+
+# Python virtual environment
+venv/
+env/
+.venv/
+
+# Python cache files (auto-generated, not needed in repo)
+__pycache__/
+*.py[cod]
+*.pyo
+
+# PyInstaller build output
+build/
+dist/
+*.spec.bak
+
+# Saved alert clips (can be large, belong on Drive not in repo)
+clips/
+
+# PyCharm IDE files
+.idea/
+
+# macOS junk
+.DS_Store
+
+# Windows junk
+Thumbs.db
